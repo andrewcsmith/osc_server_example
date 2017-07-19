@@ -40,14 +40,20 @@ enum OscMsg {
     Freq((), (f32,)),
 }
 
-struct LineCodec;
+struct OSCCodec;
 
-impl UdpCodec for LineCodec {
-    type In = (SocketAddr, Vec<u8>);
+impl UdpCodec for OSCCodec {
+    type In = (SocketAddr, OscMsg);
     type Out = (SocketAddr, Vec<u8>);
 
     fn decode(&mut self, addr: &SocketAddr, buf: &[u8]) -> io::Result<Self::In> {
-        Ok((*addr, buf.to_vec()))
+        let mut msg = bytes::BytesMut::with_capacity(4 + buf.len());
+        // Should probably guard against overflow...
+        msg.put_u32::<BigEndian>(buf.len() as u32);
+        msg.extend_from_slice(&buf[..]);
+        serde_osc::from_slice(&msg[..])
+            .map(|osc_msg| (*addr, osc_msg))
+            .map_err(|err| io::Error::new(io::ErrorKind::Other, err))
     }
 
     fn encode(&mut self, (addr, buf): Self::Out, into: &mut Vec<u8>) -> SocketAddr {
@@ -61,28 +67,15 @@ fn go() -> Result<(), Box<Error>> {
     let addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 6667);
     let socket = UdpSocket::bind(&addr, &core.handle())?;
     println!("socket: {:?}", &socket.local_addr());
-    let (sock_sink, mut sock_stream) = socket.framed(LineCodec).split();
+    let (sock_sink, mut sock_stream) = socket.framed(OSCCodec).split();
 
     let sock_stream = sock_stream.boxed().for_each(|(addr, msg)| {
-        // println!("len: {:?}", &msg.len());
-        // println!("msg: {:?}", &msg);
-        let mut buf_len = bytes::BytesMut::with_capacity(4);
-        buf_len.put_u32::<BigEndian>(msg.len() as u32);
-        let mut new_msg: Vec<u8> = buf_len.to_vec();
-        new_msg.extend_from_slice(&msg[..]);
-        // println!("new_msg: {:?}", &new_msg);
-        let message: Result<OscMsg, _> = serde_osc::from_slice(&new_msg[..]); 
-        match message {
-            Ok(message) => {
-                match message {
-                    OscMsg::Freq((), (new_freq,)) => {
-                        println!("new_freq: {:?}", &new_freq);
-                    }
-                    _ => { println!("message: {:?}", message); }
-                }
+        match msg {
+            OscMsg::Freq((), (new_freq,)) => {
+                println!("new_freq: {:?}", &new_freq);
             }
-            Err(e) => { 
-                println!("wtf: {:?}", e);
+            _ => { 
+                println!("message: {:?}", msg); 
             }
         }
         Ok(())
