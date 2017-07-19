@@ -7,8 +7,6 @@
 //! ```
 //!
 
-extern crate sample;
-
 extern crate serde;
 extern crate serde_osc;
 #[macro_use] extern crate serde_derive;
