@@ -1,0 +1,21 @@
+[package]
+name = "osc_server_example"
+version = "0.1.0"
+authors = ["Andrew Smith <andrewchristophersmith@gmail.com>"]
+
+[dependencies]
+serde = "1.0"
+serde_derive = "1.0"
+serde_osc = "0.4"
+osc_address = "0.2"
+osc_address_derive = "0.2"
+bytes = "0.4"
+futures = "0.1"
+tokio-core = "0.1"
+tokio-io = "0.1"
+tokio-proto = "0.1"
+tokio-service = "0.1"
+
+[dependencies.sample]
+git = "https://github.com/RustAudio/sample.git"
+
