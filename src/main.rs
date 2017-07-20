@@ -69,7 +69,7 @@ fn go() -> Result<(), Box<Error>> {
     println!("socket: {:?}", &socket.local_addr());
     let (sock_sink, mut sock_stream) = socket.framed(OSCCodec).split();
 
-    let sock_stream = sock_stream.boxed().for_each(|(addr, msg)| {
+    let sock_stream = sock_stream.for_each(|(addr, msg)| {
         match msg {
             OscMsg::Freq((), (new_freq,)) => {
                 println!("new_freq: {:?}", &new_freq);
@@ -81,9 +81,7 @@ fn go() -> Result<(), Box<Error>> {
         Ok(())
     });
 
-    let fut = sock_stream;
-
-    core.run(fut);
+    core.run(sock_stream);
 
     Ok(())
 }
