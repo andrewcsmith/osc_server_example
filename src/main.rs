@@ -27,7 +27,7 @@ use std::io;
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 use std::error::Error;
 
-use bytes::{BytesMut, BufMut, BigEndian, LittleEndian};
+use bytes::{BytesMut, BufMut};
 use futures::{Future, BoxFuture, Sink, Stream};
 use tokio_core::net::{UdpSocket, UdpCodec};
 use tokio_core::reactor::Core;
@@ -38,6 +38,9 @@ use tokio_service::Service;
 enum OscMsg {
     #[osc_address(address="freq")]
     Freq((), (f32,)),
+
+    #[osc_address(address="error")]
+    Error((), (String,)),
 }
 
 struct OSCCodec;
@@ -49,8 +52,9 @@ impl UdpCodec for OSCCodec {
     fn decode(&mut self, addr: &SocketAddr, buf: &[u8]) -> io::Result<Self::In> {
         let mut msg = bytes::BytesMut::with_capacity(4 + buf.len());
         // Should probably guard against overflow...
-        msg.put_u32::<BigEndian>(buf.len() as u32);
+        msg.put_i32_be(buf.len() as i32);
         msg.extend_from_slice(&buf[..]);
+        println!("msg: {:?}", msg);
         serde_osc::from_slice(&msg[..])
             .map(|osc_msg| (*addr, osc_msg))
             .map_err(|err| io::Error::new(io::ErrorKind::Other, err))
@@ -69,13 +73,21 @@ fn go() -> Result<(), Box<Error>> {
     println!("socket: {:?}", &socket.local_addr());
     let (sock_sink, mut sock_stream) = socket.framed(OSCCodec).split();
 
-    let sock_stream = sock_stream.for_each(|(addr, msg)| {
+    let sock_stream = sock_stream
+    .or_else::<_, Result<_, io::Error>>(|err| {
+        println!("error: {:?}", err);
+        Ok((addr.clone(), OscMsg::Error((), (err.description().to_string(),))))
+    })
+    .for_each(|(addr, msg)| {
         match msg {
             OscMsg::Freq((), (new_freq,)) => {
                 println!("new_freq: {:?}", &new_freq);
             }
+            OscMsg::Error((), (err,)) => {
+                println!("error: {}", &err);
+            }
             _ => { 
-                println!("message: {:?}", msg); 
+                println!("message: {:?}", &msg); 
             }
         }
         Ok(())
