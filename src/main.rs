@@ -21,13 +21,13 @@ extern crate tokio_service;
 extern crate osc_address;
 #[macro_use] extern crate osc_address_derive;
 
-use osc_address::OscMessage;
+use osc_address::{OscMessage, OscBundle, OscPacket};
 
 use std::io;
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 use std::error::Error;
 
-use bytes::{BytesMut, BufMut};
+use bytes::{Buf, BytesMut, BufMut};
 use futures::{Future, BoxFuture, Sink, Stream};
 use tokio_core::net::{UdpSocket, UdpCodec};
 use tokio_core::reactor::Core;
@@ -46,7 +46,7 @@ enum OscMsg {
 struct OSCCodec;
 
 impl UdpCodec for OSCCodec {
-    type In = (SocketAddr, OscMsg);
+    type In = (SocketAddr, OscBundle<OscMsg>);
     type Out = (SocketAddr, Vec<u8>);
 
     fn decode(&mut self, addr: &SocketAddr, buf: &[u8]) -> io::Result<Self::In> {
@@ -75,21 +75,32 @@ fn go() -> Result<(), Box<Error>> {
 
     let sock_stream = sock_stream
     .or_else::<_, Result<_, io::Error>>(|err| {
-        println!("error: {:?}", err);
-        Ok((addr.clone(), OscMsg::Error((), (err.description().to_string(),))))
+        // TODO: We need a way to bundle these errors back into an OscBundle and pass them along
+        // println!("error: {:?}", err);
+        // Ok((addr.clone(), OscMsg::Error((), (err.description().to_string(),))))
+        Err(err)
     })
-    .for_each(|(addr, msg)| {
-        match msg {
-            OscMsg::Freq((), (new_freq,)) => {
-                println!("new_freq: {:?}", &new_freq);
-            }
-            OscMsg::Error((), (err,)) => {
-                println!("error: {}", &err);
-            }
-            _ => { 
-                println!("message: {:?}", &msg); 
+    .for_each(|(addr, bundle)| {
+        for packet in bundle.messages() {
+            match packet {
+                OscPacket::Message(msg) => {
+                    match msg {
+                        OscMsg::Freq((), (new_freq,)) => {
+                            println!("new_freq: {:?}", &new_freq);
+                        }
+                        OscMsg::Error((), (err,)) => {
+                            println!("error: {}", &err);
+                        }
+                        _ => { 
+                            println!("message: {:?}", &msg); 
+                        }
+                    }
+                }
+
+                OscPacket::Bundle(_) => println!("Sorry, we'll only nest one deep here")
             }
         }
+
         Ok(())
     });
 
